@@ -14,9 +14,37 @@ namespace DryaginLibrary
 
         public SqliteDataAccess()
         {
-            myConnection = new SQLiteConnection("Data Source=dll_table.db");
             if (!File.Exists("./dll_table.db"))
                 SQLiteConnection.CreateFile("dll_table.db");
+            myConnection = new SQLiteConnection("Data Source=dll_table.db");
+
+            if (!CheckTableExists())
+                CreateTable();
+        }
+        public bool CheckTableExists()
+        {
+            string query = "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'dll_ClassesPictures'";
+            SQLiteCommand myCommand = new SQLiteCommand(query, myConnection);
+            OpenConnection();
+            SQLiteDataReader reader = myCommand.ExecuteReader();
+            bool res = reader.HasRows;
+            CloseConnection();
+            return res;
+        }
+        public void CreateTable()
+        {
+            string query = @"
+            CREATE TABLE 'dll_ClassesPictures'(
+                'id'    INTEGER NOT NULL UNIQUE,
+                'file_name' TEXT,
+                'classes'   TEXT,
+                'pictures'  TEXT,
+                PRIMARY KEY('id' AUTOINCREMENT)
+            )";
+            SQLiteCommand myCommand = new SQLiteCommand(query, myConnection);
+            OpenConnection();
+            myCommand.ExecuteReader();
+            CloseConnection();
         }
 
         public void OpenConnection()
@@ -90,57 +118,55 @@ namespace DryaginLibrary
             CloseConnection();
             return dataTable;
         }
-
-        public void SaveEveryPicture()
+        public void AnalyzeDll(string path)
         {
-            var dirs = Directory.GetFiles(@".\", "*.dll");
+            Assembly asm = Assembly.LoadFrom(path);
 
-            foreach (var dir in dirs)
+            string classes_str = "";
+            string pictures_str = "";
+
+            Type[] types = asm.GetTypes();
+            foreach (Type type in types)
             {
-                Assembly asm = Assembly.LoadFrom(dir);
-                string[] names = asm.GetManifestResourceNames();
-                foreach (string name in names)
+                classes_str += type.Name + " \n";
+            }
+
+            string[] names = asm.GetManifestResourceNames();
+            foreach (string name in names)
+            {
+                //if it is a picture
+                if (name.EndsWith(".bmp") || name.EndsWith(".jpg") || name.EndsWith(".png"))
                 {
+
+                    if (!Directory.Exists(@".\images\"))
+                        Directory.CreateDirectory(@".\images\");
+
                     if (name.EndsWith(".bmp"))
                     {
                         Stream myStream = asm.GetManifestResourceStream(name);
                         Bitmap bmp = new Bitmap(myStream);
-                        bmp.Save(@"C:\Coding\pics\" + " " + asm.GetName() + " " + name);
+                        bmp.Save(@"images\" + asm.GetName() + " " + name);
                     }
-                    if (name.EndsWith(".jpg") || name.EndsWith(".png"))
+                    else
                     {
                         Stream myStream = asm.GetManifestResourceStream(name);
                         Image img = Image.FromStream(myStream);
-                        img.Save(@"C:\Coding\pics\" + " " + asm.GetName() + " " + name);
+                        img.Save(@"images\" + asm.GetName() + " " + name);
                     }
+
+                    pictures_str += name + " \n";
                 }
             }
-        }
 
-        public void SaveToDatabaseAllClassesAndPictures()
+            SaveData(new DLL_Data() { file_name = path, classes = classes_str, pictures = pictures_str });
+        }
+        public void AnalyzeEveryDll()
         {
             var dirs = Directory.GetFiles(@".\", "*.dll");
 
             foreach (var dir in dirs)
             {
-                Assembly asm = Assembly.LoadFrom(dir);
-
-                string classes_str = "";
-                string pictures_str = "";
-
-                Type[] types = asm.GetTypes();
-                foreach (Type type in types)
-                {
-                    classes_str += type.Name + " \n";
-                }
-
-                string[] names = asm.GetManifestResourceNames();
-                foreach (string name in names)
-                {
-                    pictures_str += name + " \n";
-                }
-
-                SaveData(new DLL_Data() { file_name = dir, classes = classes_str, pictures = pictures_str });
+                AnalyzeDll(dir);
             }
         }
     }
